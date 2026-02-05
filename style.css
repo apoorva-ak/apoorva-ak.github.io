@@ -1,0 +1,334 @@
+/* ============================================
+   RESET & BASE
+   ============================================ */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    line-height: 1.65;
+    color: #333;
+    background: #fff;
+    font-size: 16px;
+}
+
+/* ============================================
+   LAYOUT
+   ============================================ */
+.wrapper {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* ============================================
+   LEFT SIDEBAR
+   ============================================ */
+.sidebar {
+    width: 280px;
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    padding: 60px 30px;
+    background: #fff;
+    border-right: 1px solid #e0e0e0;
+}
+
+.sidebar-content {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.name {
+    font-size: 1.75rem;
+    font-weight: 400;
+    color: #000;
+    margin-bottom: 25px;
+    line-height: 1.3;
+}
+
+.profile-photo {
+    width: 180px;
+    height: 180px;
+    object-fit: cover;
+    margin-bottom: 25px;
+    border-radius: 0; /* Square photo, no rounded corners */
+}
+
+.sidebar-links {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sidebar-links a {
+    color: #666;
+    font-size: 0.95rem;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.sidebar-links a:hover {
+    color: #000;
+    text-decoration: none;
+}
+
+/* ============================================
+   MAIN CONTENT AREA
+   ============================================ */
+.main-content {
+    margin-left: 280px;
+    padding: 60px 60px 60px 80px;
+    max-width: 900px;
+    flex: 1;
+}
+
+/* ============================================
+   LINKS
+   ============================================ */
+a {
+    color: #0066cc;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+a:hover {
+    color: #004499;
+    text-decoration: underline;
+}
+
+/* ============================================
+   SECTIONS
+   ============================================ */
+section {
+    margin-bottom: 50px;
+}
+
+.intro p {
+    margin-bottom: 20px;
+    text-align: justify;
+}
+
+/* ============================================
+   PUBLICATIONS
+   ============================================ */
+h2 {
+    font-size: 1.5rem;
+    font-weight: 400;
+    margin-bottom: 30px;
+    color: #000;
+}
+
+.publication {
+    margin-bottom: 30px;
+    padding-bottom: 30px;
+    border-bottom: 1px solid #eee;
+}
+
+.publication:last-child {
+    border-bottom: none;
+}
+
+.pub-title {
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: #000;
+    margin-bottom: 8px;
+    line-height: 1.5;
+}
+
+.pub-authors {
+    font-size: 0.95rem;
+    color: #666;
+    margin-bottom: 6px;
+    line-height: 1.5;
+}
+
+.pub-authors strong {
+    color: #000;
+    font-weight: 500;
+}
+
+.pub-venue {
+    font-size: 0.9rem;
+    color: #888;
+    margin-bottom: 8px;
+    font-style: italic;
+}
+
+.pub-links {
+    font-size: 0.9rem;
+}
+
+.pub-links a {
+    color: #0066cc;
+    margin-right: 4px;
+}
+
+/* ============================================
+   SERVICE SECTION
+   ============================================ */
+.service p {
+    margin-bottom: 12px;
+    color: #666;
+}
+
+.service strong {
+    color: #000;
+}
+
+/* ============================================
+   RESPONSIVE - TABLET
+   ============================================ */
+@media (max-width: 1024px) {
+    .sidebar {
+        width: 240px;
+        padding: 50px 25px;
+    }
+
+    .main-content {
+        margin-left: 240px;
+        padding: 50px 40px 50px 60px;
+    }
+
+    .profile-photo {
+        width: 120px;
+        height: 120px;
+    }
+
+    .name {
+        font-size: 1.5rem;
+    }
+}
+
+/* ============================================
+   RESPONSIVE - MOBILE
+   ============================================ */
+@media (max-width: 768px) {
+    .wrapper {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        position: relative;
+        width: 100%;
+        height: auto;
+        padding: 40px 30px;
+        border-right: none;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .sidebar-content {
+        align-items: center;
+        text-align: center;
+    }
+
+    .name {
+        text-align: center;
+    }
+
+    .sidebar-links {
+        align-items: center;
+    }
+
+    .main-content {
+        margin-left: 0;
+        padding: 40px 30px;
+    }
+
+    .intro p {
+        text-align: left;
+    }
+
+    h2 {
+        font-size: 1.3rem;
+    }
+}
+
+/* ============================================
+   RESPONSIVE - SMALL MOBILE
+   ============================================ */
+@media (max-width: 480px) {
+    .sidebar {
+        padding: 30px 20px;
+    }
+
+    .main-content {
+        padding: 30px 20px;
+    }
+
+    .profile-photo {
+        width: 100px;
+        height: 100px;
+    }
+
+    .name {
+        font-size: 1.4rem;
+        margin-bottom: 20px;
+    }
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+@media print {
+    .wrapper {
+        display: block;
+    }
+
+    .sidebar {
+        position: relative;
+        width: 100%;
+        height: auto;
+        padding: 20px;
+        border-right: none;
+        border-bottom: 1px solid #000;
+    }
+
+    .sidebar-content {
+        flex-direction: row;
+        align-items: center;
+        gap: 20px;
+    }
+
+    .profile-photo {
+        width: 80px;
+        height: 80px;
+        margin-bottom: 0;
+    }
+
+    .name {
+        margin-bottom: 0;
+        font-size: 1.5rem;
+    }
+
+    .sidebar-links {
+        display: none;
+    }
+
+    .main-content {
+        margin-left: 0;
+        padding: 20px;
+    }
+
+    body {
+        font-size: 12pt;
+    }
+    
+    a {
+        color: #000;
+        text-decoration: underline;
+    }
+    
+    .pub-links {
+        display: none;
+    }
+}
