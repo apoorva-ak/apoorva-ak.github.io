@@ -636,7 +636,7 @@
 <!-- Top bar -->
 <header class="topbar">
     <div class="topbar-left">
-        <a href="index.html" class="back-link">
+        <a href="../" class="back-link">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <path d="M10 12L6 8l4-4"/>
             </svg>
@@ -700,7 +700,7 @@
 <p>These are prerequisites for any higher-order temporal reasoning. A model that can’t reliably answer “which event started first?” is unlikely to answer more complex relational questions about time.</p>
 
 <figure>
-  <img src="assets/interspeech/task_examples_horizontal.png" alt="Example questions from the three temporal reasoning tasks with event timelines" />
+  <img src="../assets/interspeech/task_examples_horizontal.png" alt="Example questions from the three temporal reasoning tasks with event timelines" />
   <figcaption><strong>Figure 1.</strong> Example questions from the three tasks. Sound events are shown as timeline bars across a shared time axis; the model must identify the correct event. Correct answers are highlighted in purple.</figcaption>
 </figure>
 
@@ -810,8 +810,8 @@
 
 <figure>
   <div class="img-row">
-    <img src="assets/interspeech/af3_attention_plot.png" alt="Audio vs text attention share by layer for Audio-Flamingo-3" />
-    <img src="assets/interspeech/desta_attention_plot.png" alt="Audio vs text attention share by layer for DeSTA2.5-Audio" />
+    <img src="../assets/interspeech/af3_attention_plot.png" alt="Audio vs text attention share by layer for Audio-Flamingo-3" />
+    <img src="../assets/interspeech/desta_attention_plot.png" alt="Audio vs text attention share by layer for DeSTA2.5-Audio" />
   </div>
   <figcaption><strong>Figure 2.</strong> Layer-wise audio (red) vs. text (blue) attention share for Audio-Flamingo-3 (left) and DeSTA2.5-Audio (right). Audio receives less than 5% of attention in nearly every layer of both models, with a brief spike around Layer 4.</figcaption>
 </figure>
@@ -854,8 +854,8 @@
 
 <figure>
   <div class="img-row">
-    <img src="assets/interspeech/af3_layerwise_avg.png" alt="Audio-Flamingo-3 average accuracy change by layer" />
-    <img src="assets/interspeech/desta_layerwise_avg.png" alt="DeSTA2.5-Audio average accuracy change by layer" />
+    <img src="../assets/interspeech/af3_layerwise_avg.png" alt="Audio-Flamingo-3 average accuracy change by layer" />
+    <img src="../assets/interspeech/desta_layerwise_avg.png" alt="DeSTA2.5-Audio average accuracy change by layer" />
   </div>
   <figcaption><strong>Figure 3.</strong> Average accuracy change (Δ%) across tasks when scaling is applied at each individual layer. Audio-Flamingo-3 (left) peaks at Layer 20 (+4.6%); DeSTA2.5-Audio (right) peaks at Layer 9 (+1.8%). Bars below zero indicate layers where intervention hurts.</figcaption>
 </figure>
@@ -883,18 +883,6 @@
     <p><strong>Training-free inference-time interventions can help.</strong> Layer-targeted attention scaling at a single identified bottleneck layer yields a 3.2% accuracy improvement with no training. The intervention is architecture-dependent, but the pattern — a localized layer where redistribution matters most — holds for both models.</p>
   </li>
 </ol>
-
-<h2 id="citation">Citation</h2>
-
-<div class="citation-block">
-<span class="cite-label">BibTeX</span>
-<pre>@inproceedings{kulkarni2026temporal,
-  title={A Closer Look at Failure Modes in Temporal Understanding of Large Audio-Language Models},
-  author={Kulkarni, Apoorva and Jayakumar, Kaousheik and Ghosh, Sreyan and Wiegreffe, Sarah and Manocha, Dinesh and Duraiswami, Ramani},
-  booktitle={Interspeech},
-  year={2026}
-}</pre>
-</div>
 
         </article>
 
@@ -932,7 +920,6 @@
                     </ul>
                 </li>
                 <li><a href="#takeaways">Takeaways</a></li>
-                <li><a href="#citation">Citation</a></li>
             </ul>
         </nav>
     </aside>
