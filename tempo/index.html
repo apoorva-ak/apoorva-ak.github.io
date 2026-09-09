@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A Closer Look at Failure Modes in Temporal Understanding of Large Audio-Language Models &middot; Apoorva Kulkarni</title>
+    <meta name="description" content="Interspeech 2026 paper: diagnosing why large audio-language models fail at temporal reasoning, and a training-free attention-redistribution fix.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%232563eb'/><text x='50' y='68' font-family='-apple-system,Helvetica,Arial,sans-serif' font-size='52' font-weight='600' fill='white' text-anchor='middle'>AK</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;1,14..32,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <style>
+        /* ── Variables ─────────────────────────────── */
+        :root {
+            --bg:          #f8f9fb;
+            --surface:     #ffffff;
+            --surface2:    #f1f3f7;
+            --text:        #0f1117;
+            --text2:       #4b5261;
+            --text3:       #9299a8;
+            --border:      #e3e6ed;
+            --border-md:   #cdd1db;
+            --accent:      #2563eb;
+            --accent-dim:  rgba(37,99,235,0.09);
+            --accent-hover:#1d4ed8;
+            --tag-bg:      rgba(37,99,235,0.08);
+            --tag-text:    #1e40af;
+            --code-bg:     #1c1f26;
+            --code-text:   #e2e4e9;
+            --shadow:      0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-md:   0 4px 12px rgba(0,0,0,0.08);
+            --toc-width:   220px;
+            --topbar-h:    52px;
+        }
+
+        /* ── Reset ──────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html {
+            scroll-behavior: smooth;
+            scroll-padding-top: calc(var(--topbar-h) + 24px);
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            font-size: 16px;
+            line-height: 1.7;
+            -webkit-font-smoothing: antialiased;
+            transition: background 0.25s, color 0.25s;
+        }
+
+        /* ── Read progress ──────────────────────────── */
+        #progress {
+            position: fixed;
+            top: 0; left: 0;
+            height: 2px;
+            background: var(--accent);
+            width: 0%;
+            z-index: 9999;
+            transition: width 60ms linear;
+        }
+
+        /* ── Top bar ────────────────────────────────── */
+        .topbar {
+            position: sticky;
+            top: 0;
+            z-index: 200;
+            height: var(--topbar-h);
+            background: color-mix(in srgb, var(--bg) 88%, transparent);
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 2rem;
+            gap: 1rem;
+            transition: background 0.25s, border-color 0.25s;
+        }
+
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            min-width: 0;
+        }
+
+        .back-link {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.82rem;
+            font-weight: 500;
+            color: var(--text3);
+            text-decoration: none;
+            transition: color 0.15s;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .back-link:hover { color: var(--text); }
+
+        .topbar-divider {
+            width: 1px;
+            height: 18px;
+            background: var(--border-md);
+            flex-shrink: 0;
+        }
+
+        .topbar-title {
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text2);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-shrink: 0;
+        }
+
+        .topbar-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.3rem 0.7rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            font-family: inherit;
+            color: var(--text2);
+            background: transparent;
+            border: 1px solid var(--border-md);
+            border-radius: 6px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .topbar-btn:hover {
+            color: var(--text);
+            border-color: var(--text3);
+            background: var(--surface2);
+        }
+
+        .topbar-btn.accent {
+            color: var(--accent);
+            border-color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .topbar-btn.accent:hover {
+            background: var(--accent);
+            color: var(--surface);
+        }
+
+        /* ── Page grid ──────────────────────────────── */
+        .page-grid {
+            display: grid;
+            grid-template-columns: minmax(0,1fr) var(--toc-width);
+            gap: 3.5rem;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 3rem 2rem 6rem;
+        }
+
+        /* ── Main column ────────────────────────────── */
+        .main-col { min-width: 0; }
+
+        /* ── Paper header ───────────────────────────── */
+        .paper-header {
+            padding-bottom: 2.25rem;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 2rem;
+        }
+
+        .venue-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--tag-text);
+            background: var(--tag-bg);
+            border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+            padding: 0.25rem 0.7rem;
+            border-radius: 4px;
+            margin-bottom: 1.1rem;
+        }
+
+        .paper-title {
+            font-size: 2rem;
+            font-weight: 700;
+            line-height: 1.15;
+            letter-spacing: -0.025em;
+            color: var(--text);
+            margin-bottom: 1.25rem;
+        }
+
+        .authors-block {
+            font-size: 0.88rem;
+            color: var(--text2);
+            line-height: 1.65;
+            margin-bottom: 0.3rem;
+        }
+
+        .authors-block .me {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .authors-block a {
+            color: inherit;
+            text-decoration: none;
+            transition: color 0.15s;
+        }
+
+        .authors-block a:hover { color: var(--accent); }
+
+        .affil-block {
+            font-size: 0.78rem;
+            color: var(--text3);
+            margin-bottom: 1.5rem;
+            line-height: 1.5;
+        }
+
+        .paper-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .paper-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.45rem 1rem;
+            font-size: 0.8rem;
+            font-weight: 500;
+            border-radius: 6px;
+            text-decoration: none;
+            transition: all 0.15s;
+            border: 1px solid var(--border-md);
+            color: var(--text2);
+            background: var(--surface);
+            box-shadow: var(--shadow);
+        }
+
+        .paper-link:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            box-shadow: var(--shadow-md);
+        }
+
+        .paper-link svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+        /* ── TL;DR ──────────────────────────────────── */
+        .tldr {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            border-radius: 0 8px 8px 0;
+            padding: 1.1rem 1.4rem;
+            margin-bottom: 2.75rem;
+            box-shadow: var(--shadow);
+        }
+
+        .tldr-label {
+            font-size: 0.62rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+            margin-bottom: 0.4rem;
+        }
+
+        .tldr-text {
+            font-size: 0.95rem;
+            color: var(--text2);
+            line-height: 1.65;
+            font-style: italic;
+        }
+
+        /* ── Article typography ─────────────────────── */
+        .post-content p {
+            margin-bottom: 1.3rem;
+            color: var(--text);
+        }
+
+        .post-content a {
+            color: var(--accent);
+            text-decoration: none;
+            border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+            transition: border-color 0.15s;
+        }
+
+        .post-content a:hover { border-bottom-color: var(--accent); }
+
+        .post-content h2 {
+            font-size: 1.35rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--text);
+            margin: 3rem 0 0.9rem;
+            padding-bottom: 0.6rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .post-content h3 {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: var(--text);
+            margin: 2rem 0 0.65rem;
+        }
+
+        .post-content strong { font-weight: 600; color: var(--text); }
+        .post-content em { font-style: italic; }
+
+        .post-content ul, .post-content ol {
+            padding-left: 1.35rem;
+            margin-bottom: 1.3rem;
+        }
+
+        .post-content li { margin-bottom: 0.4rem; }
+
+        /* ── Figures ────────────────────────────────── */
+        .post-content figure {
+            margin: 2rem 0;
+        }
+
+        .post-content figure img {
+            max-width: 100%;
+            width: 100%;
+            height: auto;
+            display: block;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: #fff;
+            box-shadow: var(--shadow);
+        }
+
+        .post-content figcaption {
+            margin-top: 0.6rem;
+            font-size: 0.78rem;
+            color: var(--text3);
+            line-height: 1.55;
+        }
+
+        .post-content figcaption strong { color: var(--text2); }
+
+        /* side-by-side figures */
+        .post-content .img-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
+
+        .post-content .img-row > * {
+            min-width: 0;
+        }
+
+        .post-content .img-row img {
+            width: 100%;
+            height: auto;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: #fff;
+            box-shadow: var(--shadow);
+            display: block;
+        }
+
+        /* equal-height variant: normalize differing aspect ratios */
+        .post-content .img-row.equal-h img {
+            width: auto;
+            max-width: 100%;
+            height: 230px;
+            margin: 0 auto;
+            object-fit: contain;
+        }
+
+        /* ── Tables ─────────────────────────────────── */
+        .post-content table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.84rem;
+            margin: 1.75rem 0;
+            background: var(--surface);
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+        }
+
+        .post-content table thead {
+            background: var(--surface2);
+            border-bottom: 1px solid var(--border-md);
+        }
+
+        .post-content table th {
+            padding: 0.6rem 0.9rem;
+            text-align: left;
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text2);
+            white-space: nowrap;
+        }
+
+        .post-content table td {
+            padding: 0.6rem 0.9rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text2);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.81rem;
+        }
+
+        .post-content table td:first-child {
+            font-family: 'Inter', sans-serif;
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        .post-content table tbody tr:last-child td { border-bottom: none; }
+
+        .post-content table tbody tr:hover { background: var(--accent-dim); }
+
+        /* ── Blockquotes ─────────────────────────────── */
+        .post-content blockquote {
+            border-left: 3px solid var(--accent);
+            background: var(--accent-dim);
+            padding: 0.9rem 1.2rem;
+            border-radius: 0 6px 6px 0;
+            margin: 1.5rem 0;
+        }
+
+        .post-content blockquote p {
+            margin-bottom: 0;
+            font-size: 0.95rem;
+            color: var(--text2);
+            font-style: italic;
+        }
+
+        /* ── Code ───────────────────────────────────── */
+        .post-content code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.83em;
+            background: var(--accent-dim);
+            color: var(--accent);
+            padding: 0.1em 0.35em;
+            border-radius: 4px;
+        }
+
+        .post-content pre {
+            background: var(--code-bg);
+            color: var(--code-text);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin: 1.5rem 0;
+            overflow-x: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            line-height: 1.6;
+            border: 1px solid var(--border);
+        }
+
+        .post-content pre code {
+            background: none;
+            color: inherit;
+            padding: 0;
+            font-size: inherit;
+        }
+
+        /* ── Citation block ─────────────────────────── */
+        .citation-block {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 1.5rem 0;
+            box-shadow: var(--shadow);
+        }
+
+        .citation-block .cite-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.6rem 1rem;
+            background: var(--surface2);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .citation-block .cite-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.62rem;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--text3);
+        }
+
+        .citation-block .cite-copy {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.72rem;
+            font-weight: 500;
+            font-family: inherit;
+            color: var(--text3);
+            background: transparent;
+            border: 1px solid var(--border-md);
+            border-radius: 5px;
+            padding: 0.2rem 0.6rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .citation-block .cite-copy:hover { color: var(--text); border-color: var(--text3); }
+        .citation-block .cite-copy.copied { color: var(--accent); border-color: var(--accent); }
+
+        .citation-block pre {
+            margin: 0;
+            border: none;
+            border-radius: 0;
+            background: var(--surface);
+            color: var(--text2);
+            padding: 0.9rem 1rem;
+            font-size: 0.78rem;
+        }
+
+        /* ── TOC column ─────────────────────────────── */
+        .toc-col {
+            position: sticky;
+            top: calc(var(--topbar-h) + 2rem);
+            align-self: start;
+            max-height: calc(100vh - var(--topbar-h) - 4rem);
+            overflow-y: auto;
+        }
+
+        .toc-label {
+            font-size: 0.62rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--text3);
+            font-family: 'JetBrains Mono', monospace;
+            margin-bottom: 0.8rem;
+            padding-left: 0.5rem;
+        }
+
+        .toc-col nav ul { list-style: none; }
+        .toc-col nav li { margin-bottom: 1px; }
+
+        .toc-col nav a {
+            display: block;
+            padding: 0.32rem 0.6rem;
+            font-size: 0.76rem;
+            color: var(--text3);
+            text-decoration: none;
+            border-radius: 4px;
+            border-left: 2px solid transparent;
+            line-height: 1.45;
+            transition: all 0.15s;
+        }
+
+        .toc-col nav a:hover { color: var(--text); background: var(--surface2); }
+
+        .toc-col nav a.active {
+            color: var(--accent);
+            background: var(--accent-dim);
+            border-left-color: var(--accent);
+            font-weight: 500;
+        }
+
+        .toc-col nav ul ul {
+            padding-left: 0.6rem;
+            margin-top: 1px;
+            border-left: 1px solid var(--border);
+            margin-left: 0.6rem;
+        }
+
+        .toc-col nav ul ul a { font-size: 0.72rem; padding: 0.25rem 0.5rem; }
+
+        /* ── Footer ─────────────────────────────────── */
+        .site-footer {
+            margin-top: 3.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            font-size: 0.75rem;
+            color: var(--text3);
+        }
+
+        .footer-name { font-weight: 600; color: var(--text2); }
+
+        .footer-links { display: flex; gap: 1rem; }
+
+        .footer-links a {
+            color: var(--text3);
+            text-decoration: none;
+            transition: color 0.15s;
+        }
+
+        .footer-links a:hover { color: var(--accent); }
+
+        /* ── Responsive ─────────────────────────────── */
+        @media (max-width: 900px) {
+            .page-grid {
+                grid-template-columns: 1fr;
+                gap: 0;
+                padding: 2rem 1.25rem 4rem;
+            }
+
+            .toc-col { display: none; }
+
+            .paper-title { font-size: 1.55rem; }
+
+            .topbar { padding: 0 1.25rem; }
+
+            .topbar-title { display: none; }
+
+            .post-content .img-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ── TEMPO additions ────────────────────────── */
+
+        /* JetBrains Mono ligates "<|" and "|>" into arrows, which mangles
+           timestamp tokens like <|3.5|> - turn ligatures off everywhere mono is used */
+        code, pre, .tag,
+        .post-content table td,
+        .post-content table thead tr:last-child th,
+        .facts .facts-n, .stat-card .stat-label, .toc-label, .tldr-label, .cite-label {
+            font-variant-ligatures: none;
+            -webkit-font-variant-ligatures: none;
+            font-feature-settings: "liga" 0, "clig" 0, "calt" 0;
+        }
+
+        /* typeset formulas (no math library needed) */
+        .math {
+            /* block, not flex: flex gaps would separate a subscript from its base */
+            display: block;
+            text-align: center;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.1rem 1.25rem;
+            margin: 1.5rem 0;
+            box-shadow: var(--shadow);
+            font-family: 'Inter', serif;
+            font-size: 1rem;
+            color: var(--text);
+            overflow-x: auto;
+        }
+
+        .math i { font-family: Georgia, 'Times New Roman', serif; font-style: italic; }
+        .math .op { color: var(--text2); margin: 0 0.45rem; }
+        .math sub, .math sup { font-size: 0.7em; }
+
+        .frac {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            vertical-align: middle;
+            font-size: 0.9em;
+        }
+
+        .frac > span:first-child { padding: 0 0.5rem 0.2rem; }
+
+        .frac > span:last-child {
+            padding: 0.2rem 0.5rem 0;
+            border-top: 1px solid var(--border-md);
+        }
+
+        /* a caption directly under a table needs to clear the next paragraph */
+        .post-content > figcaption { margin-bottom: 1.3rem; }
+
+        /* wide multi-level tables scroll instead of squeezing */
+        .table-wrap {
+            margin: 1.75rem 0;
+            overflow-x: auto;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            box-shadow: var(--shadow);
+        }
+
+        .table-wrap table {
+            margin: 0;
+            border: none;
+            border-radius: 0;
+            box-shadow: none;
+            min-width: 1080px;
+            font-size: 0.72rem;
+        }
+
+        .table-wrap table th,
+        .table-wrap table td { padding: 0.42rem 0.55rem; white-space: nowrap; }
+
+        /* grouped header rows */
+        .post-content table thead tr + tr th { border-top: 1px solid var(--border); }
+
+        .post-content table thead tr:last-child th {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
+        /* numeric columns right-align in every table */
+        .post-content table th:not(:first-child),
+        .post-content table td:not(:first-child) { text-align: right; }
+
+        /* grouped header spans stay centered over their columns */
+        .post-content table th[colspan] {
+            text-align: center;
+            border-left: 1px solid var(--border-md);
+        }
+
+        /* section separator rows inside a table body */
+        .post-content table td.group-row {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.62rem;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--text3);
+            background: var(--surface2);
+            padding: 0.5rem 0.9rem;
+            text-align: left !important;
+        }
+
+        .post-content table tr.is-ours td { background: var(--accent-dim); }
+        .post-content table tr.is-ours:hover td { background: var(--accent-dim); }
+
+        /* headline result stats */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 0.75rem;
+            margin: 1.75rem 0;
+        }
+
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.9rem 1rem;
+            box-shadow: var(--shadow);
+        }
+
+        .stat-card .stat-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text3);
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .stat-nums {
+            display: flex;
+            align-items: baseline;
+            gap: 0.4rem;
+        }
+
+        .stat-card .stat-from {
+            font-size: 0.95rem;
+            color: var(--text3);
+            text-decoration: line-through;
+        }
+
+        .stat-card .stat-to {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent);
+            letter-spacing: -0.02em;
+        }
+
+        .stat-card .stat-note {
+            margin-top: 0.4rem;
+            font-size: 0.7rem;
+            color: var(--text3);
+        }
+
+        /* dataset facts strip */
+        .facts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+            gap: 0.5rem;
+            margin: 1.5rem 0 2rem;
+        }
+
+        .facts div {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.65rem 0.75rem;
+            text-align: center;
+        }
+
+        .facts .facts-n {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--text);
+            letter-spacing: -0.01em;
+        }
+
+        .facts .facts-l {
+            font-size: 0.66rem;
+            color: var(--text3);
+            margin-top: 0.15rem;
+            line-height: 1.35;
+        }
+
+        /* task list */
+        .task-list { list-style: none; padding-left: 0; }
+
+        .task-list li {
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 0;
+        }
+
+        .task-list li:last-child { border-bottom: none; }
+
+        .tag {
+            display: inline-block;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.68rem;
+            font-weight: 500;
+            color: var(--tag-text);
+            background: var(--tag-bg);
+            border-radius: 4px;
+            padding: 0.1rem 0.4rem;
+            margin-right: 0.5rem;
+        }
+
+        /* audio sample cards */
+        .sample {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem 1.15rem;
+            margin: 1.25rem 0;
+            box-shadow: var(--shadow);
+        }
+
+        .sample-head {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 0.7rem;
+        }
+
+        .sample-corpus { font-size: 0.8rem; color: var(--text2); }
+
+        .sample audio {
+            width: 100%;
+            height: 34px;
+            margin-bottom: 0.7rem;
+            display: block;
+        }
+
+        .sample-prompt {
+            font-size: 0.8rem;
+            font-style: italic;
+            color: var(--text3);
+            margin-bottom: 0.6rem;
+            line-height: 1.5;
+        }
+
+        .sample pre {
+            margin: 0;
+            max-height: 260px;
+            overflow: auto;
+            font-size: 0.72rem;
+        }
+
+        .sample pre .ts { color: #7dd3fc; }
+
+        @media (max-width: 900px) {
+            .stat-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+        }
+    </style>
+</head>
+
+<body>
+<div id="progress"></div>
+
+<!-- Top bar -->
+<header class="topbar">
+    <div class="topbar-left">
+        <a href="../" class="back-link">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M10 12L6 8l4-4"/>
+            </svg>
+            Apoorva Kulkarni
+        </a>
+        <div class="topbar-divider"></div>
+        <span class="topbar-title">TEMPO: Temporally-grounded Multi-task Post-training for Large Audio-Language Models</span>
+    </div>
+    <div class="topbar-right">
+        <a href="https://arxiv.org/abs/2608.29999" class="topbar-btn accent" target="_blank">Paper</a>
+    </div>
+</header>
+
+<!-- Two-column layout -->
+<div class="page-grid">
+
+    <!-- Main content -->
+    <main class="main-col" id="top">
+
+        <!-- Paper header -->
+        <header class="paper-header">
+            <div class="venue-chip">EMNLP 2026 &middot; Main Conference</div>
+
+            <h1 class="paper-title">TEMPO: Temporally-grounded Multi-task Post-training for Large Audio-Language Models</h1>
+
+            <div class="authors-block"><span class="me">Apoorva Kulkarni</span><sup>1,*</sup>, Kaousheik Jayakumar<sup>1,*</sup>, Sreyan Ghosh<sup>1</sup>, Utathya Aich<sup>2</sup>, Ramani Duraiswami<sup>1,&dagger;</sup>, Dinesh Manocha<sup>1,&dagger;</sup></div>
+
+            <div class="affil-block">
+                <sup>1</sup>University of Maryland, College Park &nbsp;&middot;&nbsp; <sup>2</sup>CNH Industrial India<br>
+                <sup>*</sup>Equal contribution &nbsp;&middot;&nbsp; <sup>&dagger;</sup>Equal advising
+            </div>
+
+            <div class="paper-links">
+                <a href="https://arxiv.org/abs/2608.29999" class="paper-link" target="_blank">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    Paper
+                </a>
+                <a href="https://github.com/kaousheik-26/tempo" class="paper-link" target="_blank">
+                    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                        <path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.02c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.4 1.24-3.24-.13-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.24a11.5 11.5 0 016 0c2.29-1.56 3.3-1.24 3.3-1.24.66 1.66.25 2.88.12 3.18.77.84 1.24 1.92 1.24 3.24 0 4.63-2.81 5.65-5.49 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.21.7.83.58C20.57 22.29 24 17.8 24 12.5 24 5.87 18.63.5 12 .5z"/>
+                    </svg>
+                    Code
+                </a>
+                <a href="https://huggingface.co/datasets/Kaousheik/tempo" class="paper-link" target="_blank">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                        <path d="M3 5v14a9 3 0 0 0 18 0V5"/>
+                        <path d="M3 12a9 3 0 0 0 18 0"/>
+                    </svg>
+                    Dataset
+                </a>
+                <a href="https://huggingface.co/collections/Kaousheik/tempo-6a8a96ced2752994aa9034e2" class="paper-link" target="_blank">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 3v12"/>
+                        <path d="M7 10l5 5 5-5"/>
+                        <path d="M4 19h16"/>
+                    </svg>
+                    Checkpoints
+                </a>
+            </div>
+        </header>
+
+        <div class="tldr">
+            <div class="tldr-label">TL;DR</div>
+            <div class="tldr-text">Large audio-language models can say what is in a clip but not when it happens. TEMPO is the first unified model to timestamp speech, sound and music from a single decoder, built on atomic timestamp tokens, a time-aware projector and a distance-aware Gaussian loss. It outperforms Audio Flamingo Next and Qwen3-Omni on a 10K-sample benchmark spanning five tasks, with SFT delivering most of the gain and GRPO refining it.</div>
+        </div>
+
+        <article class="post-content">
+
+            <h2 id="motivation">Motivation</h2>
+
+<p>Large audio-language models (LALMs) describe audio at the clip level but cannot assign timestamps to the events, speakers, or sounds they identify. Despite being essential for downstream tasks like speech recognition and dense audio captioning, <strong>timestamping remains a key limitation of most LALMs</strong>.</p>
+
+<p>We present <strong>TEMPO</strong> (Temporally-grounded Multi-task Post-training), the first unified model to handle audio, speech and music timestamping tasks. Our core contribution is a supervised fine-tuning (SFT) stage built on three innovations: atomic timestamp tokens, a time-aware projector that injects sinusoidal wall-clock encodings into audio frame embeddings, and a distance-aware Gaussian loss, trained under a synthetic-to-real curriculum. We further introduce, to our knowledge, the first application of reinforcement learning to unified audio timestamping, using GRPO with verifiable temporal rewards that directly optimize the evaluation objectives.</p>
+
+<p>To support this work we build a training dataset of 119K samples and an evaluation benchmark of 10K samples, drawn from six established corpora across five tasks.</p>
+
+<div class="facts">
+  <div><div class="facts-n">5</div><div class="facts-l">timestamping tasks</div></div>
+  <div><div class="facts-n">119K</div><div class="facts-l">training samples</div></div>
+  <div><div class="facts-n">10K</div><div class="facts-l">benchmark samples</div></div>
+  <div><div class="facts-n">6</div><div class="facts-l">source corpora</div></div>
+  <div><div class="facts-n">0.1s</div><div class="facts-l">timestamp resolution</div></div>
+</div>
+
+<h2 id="tasks">Five Tasks, One Grammar</h2>
+
+<p>TEMPO answers <em>what happens when</em> across speech, sound and music. Every task reduces to the same shape: segment the audio into intervals, then label each one. TEMPO emits them as atomic timestamp tokens, such as <code>&lt;|3.5|&gt;</code>, from a single decoder, switched only by a task tag in the prompt.</p>
+
+<ul class="task-list">
+  <li><span class="tag">[speech:asr]</span><strong>Multi-speaker ASR.</strong> Transcribe overlapping speech and align every utterance to its interval.</li>
+  <li><span class="tag">[speech:diar]</span><strong>Speaker diarization.</strong> Count the speakers and mark when each one holds the floor.</li>
+  <li><span class="tag">[audio:ground]</span><strong>Audio temporal grounding.</strong> Localize a natural-language query to the intervals where it occurs.</li>
+  <li><span class="tag">[audio:caption]</span><strong>Dense audio captioning.</strong> Segment the stream and describe each sound event in place.</li>
+  <li><span class="tag">[audio:music]</span><strong>Timestamped music captioning.</strong> Emit structured chord, tempo, instrument and note-statistic annotations with times. To our knowledge, this is the first LALM to do so.</li>
+</ul>
+
+<h2 id="method">Method</h2>
+
+<p>TEMPO is built on <a href="https://arxiv.org/abs/2507.08128" target="_blank">Audio Flamingo 3</a>: a frozen Whisper-large encoder feeding a Qwen2-7B decoder through a two-layer MLP projector. Teacher-forced cross-entropy alone fails at fine-grained timestamping for three reasons, and our SFT recipe answers each one.</p>
+
+<figure>
+  <img src="assets/figure1-overview.png" alt="Overview of TEMPO: three-stage curriculum, atomic timestamp tokens, and the time-aware projector" />
+  <figcaption><strong>Figure 1.</strong> Overview of TEMPO. Top: three-stage curriculum from synthetic SFT (51K) through real-data SFT (33K) to GRPO with verifiable rewards (35K). Bottom-left: atomic timestamp tokens replace BPE fragmentation with ~601 dedicated tokens at 0.1 s resolution. Bottom-right: the time-aware projector injects sinusoidal wall-clock encodings &phi;(t) into frozen encoder features before the MLP.</figcaption>
+</figure>
+
+<h3 id="atomic-tokens">Atomic Timestamp Tokens</h3>
+
+<p>BPE shreds numeric times across subword pieces. We add ~601 dedicated tokens <code>&lt;|t|&gt;</code> for t &isin; {0.0 &hellip; 60.0} at 0.1 s steps, so predicting a time is <strong>one categorical decision</strong> rather than a sequence of digit fragments. New embeddings initialize from the mean of the BPE decomposition.</p>
+
+<h3 id="time-aware-projector">Time-Aware Projector</h3>
+
+<p>Encoder features are indexed by frame, not wall clock. We inject fixed sinusoidal encodings &phi;(t) of elapsed time into each frame embedding (d<sub>&tau;</sub> = 64, periods log-spaced from 0.08 s to 60 s), spanning sub-second onsets and long-range musical structure in one projector.</p>
+
+<h3 id="gaussian-loss">Distance-Aware Gaussian Loss</h3>
+
+<p>Cross-entropy treats the timestamp vocabulary as unordered: predicting <code>&lt;|12.4|&gt;</code> for a ground truth of <code>&lt;|12.3|&gt;</code> costs exactly as much as predicting <code>&lt;|48.0|&gt;</code>. Temporal IoU does not. We restore that ordering with a soft target that decays with distance from the true time t*:</p>
+
+<div class="math">
+  <i>q</i><sub><i>k</i></sub><span class="op">=</span>
+  <span class="frac">
+    <span>exp&thinsp;(&minus;(<i>t</i><sub><i>k</i></sub> &minus; <i>t</i>*)<sup>2</sup> / 2&sigma;<sub><i>t</i></sub><sup>2</sup>)</span>
+    <span>&Sigma;<sub><i>j</i></sub> exp&thinsp;(&minus;(<i>t</i><sub><i>j</i></sub> &minus; <i>t</i>*)<sup>2</sup> / 2&sigma;<sub><i>t</i></sub><sup>2</sup>)</span>
+  </span>
+</div>
+
+<p>The auxiliary term is the cross-entropy of the model&rsquo;s timestamp distribution <em>p</em> against that soft label, taken over timestamp positions only, and added to the standard token objective so exact hits are still rewarded most while near misses get graded partial credit:</p>
+
+<div class="math">
+  <i>L</i><sub>time</sub><span class="op">=</span>&minus;&thinsp;&Sigma;<sub><i>k</i></sub>&thinsp;<i>q</i><sub><i>k</i></sub>&thinsp;log&thinsp;<i>p</i><sub><i>k</i></sub>
+</div>
+
+<div class="math">
+  <i>L</i><span class="op">=</span><i>L</i><sub>CE</sub><span class="op">+</span>&lambda;<sub>time</sub>&thinsp;&middot;&thinsp;<i>L</i><sub>time</sub>
+</div>
+
+<p>We use &sigma;<sub>t</sub> = 0.3 s and &lambda;<sub>time</sub> = 0.5 over the 0.1 s grid of ~601 tokens.</p>
+
+<figure>
+  <img src="assets/figure2-gaussian-loss.png" alt="One-hot cross-entropy target versus distance-aware Gaussian target" />
+  <figcaption><strong>Figure 2.</strong> Standard cross-entropy (top) uses a one-hot target, penalizing all errors equally. Our distance-aware Gaussian target (bottom, &sigma;<sub>t</sub> = 0.3 s) assigns partial credit to near-miss predictions, encouraging the model to learn the ordinal structure of the timestamp vocabulary.</figcaption>
+</figure>
+
+<h3 id="curriculum">Three-Stage Curriculum</h3>
+
+<ol>
+  <li><p><strong>Synthetic SFT (51.5K).</strong> LibriSpeech + ESC-50 + Slakh mixtures with timestamps balanced uniformly, to establish temporal calibration before real data. 2 epochs, lr 1e-4.</p></li>
+  <li><p><strong>Real-data SFT (32.7K).</strong> AMI, ICSI, Switchboard, AudioSet Strong, TACOS and Slakh2100. LoRA r=128, &alpha;=256; projector and timestamp embeddings trained directly. 2 epochs, lr 5e-5.</p></li>
+  <li><p><strong>GRPO (35K).</strong> Verifiable rewards built from the eval metrics themselves, bounded in [0,1] and gated by a format check. LoRA r=256, 1,000 steps, 8 completions per prompt, &beta; = 0.01.</p></li>
+</ol>
+
+<h2 id="results">Results</h2>
+
+<p>Against zero-shot LALMs explicitly trained on timestamped data, gains are largest on speech, and on music, where no prior LALM produces structured timestamped chord progressions at all.</p>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-label">Multi-speaker ASR</div>
+    <div class="stat-nums"><span class="stat-from">69.7</span><span class="stat-to">43.5</span></div>
+    <div class="stat-note">WER &darr; &middot; vs. Qwen3-Omni</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Diarization</div>
+    <div class="stat-nums"><span class="stat-from">44.4</span><span class="stat-to">71.1</span></div>
+    <div class="stat-note">mIoU &uarr; &middot; vs. Qwen3-Omni</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Dense captioning</div>
+    <div class="stat-nums"><span class="stat-from">43.6</span><span class="stat-to">59.3</span></div>
+    <div class="stat-note">event F1 &uarr; &middot; vs. TimeAudio</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Chord localization</div>
+    <div class="stat-nums"><span class="stat-from">6.9</span><span class="stat-to">76.2</span></div>
+    <div class="stat-note">chord mIoU &uarr; &middot; vs. Qwen3-Omni</div>
+  </div>
+</div>
+
+<div class="table-wrap"><table>
+<thead>
+<tr><th rowspan="3">Model</th><th colspan="6">Speech</th><th colspan="6">Sound</th><th colspan="7">Music</th></tr>
+<tr><th colspan="3">ASR</th><th colspan="3">Diarization</th><th colspan="3">Dense captioning</th><th colspan="3">Audio grounding</th><th colspan="4">Chord</th><th colspan="2">Instrument</th><th colspan="1">Tempo</th></tr>
+<tr><th>MAE↓</th><th>mIoU↑</th><th>WER↓</th><th>DER↓</th><th>mIoU↑</th><th>sF1↑</th><th>eF1↑</th><th>mIoU↑</th><th>MET↑</th><th>F1↑</th><th>MAE↓</th><th>mIoU↑</th><th>Root↑</th><th>Qual↑</th><th>F1↑</th><th>mIoU↑</th><th>F1↑</th><th>MAE↓</th><th>Acc↑</th></tr>
+</thead>
+<tbody>
+<tr><td colspan="20" class="group-row">Zero-shot LALMs</td></tr>
+<tr><td>Audio Flamingo 3</td><td>0.99</td><td>19.4</td><td>209.7</td><td>103.2</td><td>2.9</td><td>1.0</td><td>3.8</td><td>5.7</td><td>2.7</td><td>3.3</td><td>1.25</td><td>5.6</td><td>0.4</td><td>0.9</td><td>0.1</td><td>2.1</td><td>33.7</td><td>2.84</td><td>18.0</td></tr>
+<tr><td>Audio Flamingo Next</td><td>1.39</td><td>11.5</td><td>115.4</td><td>106.9</td><td>12.4</td><td>7.6</td><td>11.6</td><td>22.3</td><td>11.9</td><td>3.6</td><td><strong>0.95</strong></td><td>7.0</td><td>0.4</td><td>1.2</td><td>0.0</td><td>3.2</td><td>33.5</td><td>2.77</td><td>26.2</td></tr>
+<tr><td>Qwen3-Omni</td><td>1.12</td><td>31.6</td><td>69.7</td><td>44.2</td><td>44.4</td><td>31.5</td><td>57.9</td><td>65.4</td><td>19.0</td><td><strong>47.4</strong></td><td>1.10</td><td>49.3</td><td>1.1</td><td>2.8</td><td>0.5</td><td>6.9</td><td>25.4</td><td><strong>2.51</strong></td><td>40.3</td></tr>
+<tr><td>TimeAudio</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td>43.6</td><td>64.6</td><td>19.9</td><td>40.1</td><td>1.32</td><td>46.3</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td></tr>
+<tr><td>Gemini 2.5 Flash</td><td>1.01</td><td>43.6</td><td>49.4</td><td>50.2</td><td>34.8</td><td>21.6</td><td>21.5</td><td>52.1</td><td>10.7</td><td>27.4</td><td>1.20</td><td>42.5</td><td>8.6</td><td>19.2</td><td>1.1</td><td>30.4</td><td>65.3</td><td>–</td><td>11.2</td></tr>
+<tr><td>Gemini 2.5 Pro</td><td>0.99</td><td>42.2</td><td>46.9</td><td>27.6</td><td>51.7</td><td>42.0</td><td>41.5</td><td>63.4</td><td>10.7</td><td>36.9</td><td>1.09</td><td>48.7</td><td>8.8</td><td>15.5</td><td>0.8</td><td>25.0</td><td>77.4</td><td>3.03</td><td>12.9</td></tr>
+<tr><td colspan="20" class="group-row">Task-specific specialists</td></tr>
+<tr><td>Specialist systems<sup style="color:#7a7568">†</sup></td><td>1.27</td><td>42.7</td><td><strong>31.4</strong></td><td><strong>19.6</strong></td><td>55.3</td><td>48.8</td><td>35.0</td><td>48.8</td><td>3.9</td><td>30.8</td><td>1.83</td><td>43.6</td><td>18.8</td><td>23.4</td><td>2.0</td><td>23.8</td><td>61.2</td><td>–</td><td>45.0</td></tr>
+<tr><td colspan="20" class="group-row">TEMPO</td></tr>
+<tr><td>SFT (naive): Stage 1+2</td><td>0.84</td><td>64.0</td><td>46.0</td><td>27.4</td><td>67.2</td><td>52.3</td><td>52.4</td><td>64.5</td><td>22.7</td><td>37.1</td><td>1.44</td><td>40.3</td><td>0.3</td><td>0.3</td><td>0.3</td><td>0.3</td><td>0.5</td><td>3.95</td><td>37.8</td></tr>
+<tr><td>SFT (ours): Stage 1</td><td>2.42</td><td>41.7</td><td>94.0</td><td>74.3</td><td>43.3</td><td>25.1</td><td>47.6</td><td>50.9</td><td>10.5</td><td>34.3</td><td>3.10</td><td>36.2</td><td>19.4</td><td>32.4</td><td>5.8</td><td>75.5</td><td><strong>96.4</strong></td><td>2.71</td><td><strong>47.5</strong></td></tr>
+<tr><td>SFT (ours): Stage 2</td><td>0.85</td><td>64.8</td><td>47.0</td><td>25.1</td><td>70.0</td><td>54.5</td><td>55.2</td><td>67.8</td><td>20.2</td><td>44.6</td><td>1.14</td><td>44.7</td><td>17.4</td><td>31.9</td><td>4.6</td><td>76.0</td><td>89.4</td><td>2.78</td><td>41.7</td></tr>
+<tr><td>SFT (ours): Stage 1+2</td><td>0.77</td><td>63.8</td><td>44.7</td><td>25.4</td><td>70.5</td><td>54.9</td><td>58.5</td><td>68.3</td><td>22.3</td><td>46.2</td><td>1.19</td><td>48.5</td><td><strong>19.6</strong></td><td><strong>32.7</strong></td><td><strong>6.2</strong></td><td><strong>76.2</strong></td><td>96.3</td><td>2.63</td><td>47.3</td></tr>
+<tr class="is-ours"><td>+ Single-task RL</td><td>0.84</td><td><strong>66.1</strong></td><td>46.7</td><td>26.8</td><td>69.2</td><td>54.0</td><td>58.6</td><td>67.8</td><td><strong>24.4</strong></td><td>45.5</td><td>1.21</td><td>48.0</td><td>19.0</td><td>32.2</td><td>6.0</td><td>75.5</td><td>96.3</td><td>2.63</td><td>47.0</td></tr>
+<tr class="is-ours"><td><strong>+ Multi-task RL</strong></td><td><strong>0.76</strong></td><td>65.8</td><td>43.5</td><td>25.4</td><td><strong>71.1</strong></td><td><strong>56.3</strong></td><td><strong>59.3</strong></td><td><strong>68.5</strong></td><td>23.5</td><td>46.5</td><td>1.32</td><td><strong>49.4</strong></td><td>18.7</td><td>31.7</td><td>5.5</td><td>75.3</td><td>96.0</td><td>2.62</td><td>46.9</td></tr>
+</tbody>
+</table></div>
+
+<figcaption><strong>Table 1.</strong> Main benchmark, all values in % unless noted. <strong>Speech.</strong> WER: word error rate; DER: diarization error rate (0.25 s collar); sF1: speaker-labeled F1@IoU0.5. <strong>Sound.</strong> eF1: event F1@IoU0.5; MET: METEOR; F1: F1@IoU0.5. <strong>Music.</strong> Root / Qual: chord root and quality accuracy; F1: chord F1@IoU0.5; Instrument F1: instrument-name F1; Tempo: accuracy within 4% tolerance. <strong>Shared.</strong> MAE: boundary MAE in seconds over matches with IoU &ge; 0.3; mIoU: symmetric mean IoU. Best value per column in bold. <sup>&dagger;</sup>Off-the-shelf specialists, one dedicated model per task: Parakeet-TDT-0.6b-v2 (ASR), pyannote-3.1 (diarization), PretrainedSED/BEATs (dense captioning), CLAP-window (grounding, instrument), Chordino (chord), madmom (tempo).</figcaption>
+
+<h3 id="ablation">What Each Component Buys</h3>
+
+<p>To separate the contributions we train four SFT variants on a controlled 2,000-example subset.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th>Naive</th>
+      <th>+ Loss</th>
+      <th>+ Projector</th>
+      <th>+ Both (ours)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Diarization DER &darr;</td><td>98.4</td><td>86.2</td><td>104.2</td><td><strong>79.3</strong></td></tr>
+    <tr><td>Diarization mIoU &uarr;</td><td>23.8</td><td><strong>37.5</strong></td><td>22.2</td><td><strong>37.5</strong></td></tr>
+    <tr><td>Dense captioning eF1 &uarr;</td><td>35.3</td><td><strong>49.9</strong></td><td>34.2</td><td>49.7</td></tr>
+    <tr><td>Audio grounding F1 &uarr;</td><td>33.9</td><td>38.0</td><td>34.0</td><td><strong>38.7</strong></td></tr>
+  </tbody>
+</table>
+
+<figcaption><strong>Table 2.</strong> Per-component SFT ablation on a controlled 2,000-example subset.</figcaption>
+
+<p>The <strong>distance-aware loss alone carries most of the gain</strong> (+14.6 event F1 on dense captioning). The time-aware projector alone does nothing, because wall-clock position needs a matching learning signal, but paired with the loss it adds the last increment where temporal structure is densest: diarization DER 86.2 &rarr; 79.3, and grounding MAE 1.73 s &rarr; 1.69 s with mIoU 41.9 &rarr; 42.5.</p>
+
+<h3 id="curriculum-rl">Curriculum and RL</h3>
+
+<p><strong>The curriculum earns its keep.</strong> Synthetic data alone is not enough (94.0 WER, 74.3 DER). Real-data fine-tuning on top of it beats Stage 2 alone on most metrics (0.77 s vs 0.85 s ASR boundary MAE, 70.5 vs 70.0 diarization mIoU), so the synthetic warm-up transfers.</p>
+
+<p><strong>The recipe matters more than the data.</strong> Under an identical training budget, the three SFT innovations buy &minus;1.3 WER, &minus;2.0 DER, +6.1 event F1 and +9.1 grounding F1 over naive SFT, and take chord metrics from near-zero to usable.</p>
+
+<p><strong>RL refines, SFT installs.</strong> Multi-task GRPO adds consistent but moderate gains (+1.2 WER, +1.4 sF1, +0.8 eF1, +0.9 grounding mIoU) and does not help music captioning. Careful post-training design remains the primary lever.</p>
+
+<h2 id="real-world-music">Real-World Music</h2>
+
+<p>Every training corpus is human-annotated audio from real recordings, except music. Slakh2100&rsquo;s labels come from human-annotated Lakh MIDI, but its audio is <em>synthesized</em> from those MIDI files. To test whether that supervision survives the jump to real acoustics, we evaluate the final checkpoint zero-shot on <strong>MAESTRO</strong>: real piano recordings with human-annotated MIDI, processed through the same pipeline, split into 30 s intervals, 1,000 sampled segments. No additional fine-tuning.</p>
+
+<table>
+<thead><tr>
+<th>Model</th>
+<th>Root↑</th>
+<th>Qual↑</th>
+<th>Inst F1↑</th>
+<th>Tempo↑</th>
+</tr></thead>
+<tbody><tr><td>Audio Flamingo 3</td><td>0.0</td><td>0.0</td><td>98.7</td><td>19.5</td></tr><tr><td>Gemini 2.5 Flash</td><td>9.1</td><td>22.4</td><td>96.3</td><td>17.9</td></tr><tr><td><strong>TEMPO (multi-task RL)</strong></td><td><strong>23.9</strong></td><td><strong>27.3</strong></td><td><strong>99.8</strong></td><td><strong>24.8</strong></td></tr></tbody>
+</table>
+
+<figcaption><strong>Table 3.</strong> Out-of-domain evaluation on real acoustic piano recordings from MAESTRO, all models zero-shot. Root / Qual: chord root and chord quality accuracy (%). Inst F1: instrument-name F1 (%). Tempo: accuracy within 4% tolerance (%).</figcaption>
+
+<p>The multi-task RL checkpoint beats base Audio Flamingo 3 and Gemini 2.5 Flash on every metric (chord root accuracy 9.1 &rarr; 23.9 and quality 22.4 &rarr; 27.3 against the stronger of the two), so chord structure learned from synthesized MIDI <em>does</em> carry over to real instruments, even though absolute accuracy stays well below the in-domain Slakh numbers.</p>
+
+<h2 id="samples">Samples</h2>
+
+<p>One held-out evaluation example per task (AMI, TACOS, Slakh2100). The text below each clip is the ground-truth annotation, in the same timestamp-token format TEMPO is trained to output.</p>
+
+<div class="sample">
+  <div class="sample-head">
+    <span class="tag">[speech:asr]</span>
+    <span class="sample-corpus">AMI meeting corpus · multi-speaker ASR</span>
+  </div>
+  <audio controls preload="none" src="samples/asr.wav"></audio>
+  <div class="sample-prompt">Provide a timestamped transcription of the speech in this audio.</div>
+  <pre><code>[speech:asr] <span class="ts">&lt;|0.0|&gt;</span> The memory uh <span class="ts">&lt;|2.2|&gt;</span>
+[speech:asr] <span class="ts">&lt;|3.4|&gt;</span> Pops up the options <span class="ts">&lt;|4.5|&gt;</span>
+[speech:asr] <span class="ts">&lt;|4.9|&gt;</span> Yeah  yeah  that would be possible  yeah  sure <span class="ts">&lt;|7.1|&gt;</span>
+[speech:asr] <span class="ts">&lt;|7.5|&gt;</span> I th dont think thats uh that takes a lot of storage space or some just varia variables <span class="ts">&lt;|14.0|&gt;</span>
+[speech:asr] <span class="ts">&lt;|11.7|&gt;</span> No  that wouldnt be uh <span class="ts">&lt;|12.9|&gt;</span></code></pre>
+</div>
+<div class="sample">
+  <div class="sample-head">
+    <span class="tag">[speech:diar]</span>
+    <span class="sample-corpus">AMI meeting corpus · speaker diarization</span>
+  </div>
+  <audio controls preload="none" src="samples/diarization.wav"></audio>
+  <div class="sample-prompt">How many speakers are in this audio and when does each one speak? Include timestamps.</div>
+  <pre><code>[speech:diar] <span class="ts">&lt;|0.0|&gt;</span> Speaker 1 <span class="ts">&lt;|6.2|&gt;</span>
+[speech:diar] <span class="ts">&lt;|4.6|&gt;</span> Speaker 2 <span class="ts">&lt;|6.1|&gt;</span>
+[speech:diar] <span class="ts">&lt;|5.9|&gt;</span> Speaker 3 <span class="ts">&lt;|16.9|&gt;</span>
+[speech:diar] <span class="ts">&lt;|13.5|&gt;</span> Speaker 1 <span class="ts">&lt;|27.9|&gt;</span>
+[speech:diar] <span class="ts">&lt;|15.9|&gt;</span> Speaker 4 <span class="ts">&lt;|16.5|&gt;</span></code></pre>
+</div>
+<div class="sample">
+  <div class="sample-head">
+    <span class="tag">[audio:caption]</span>
+    <span class="sample-corpus">TACOS · dense audio captioning</span>
+  </div>
+  <audio controls preload="none" src="samples/dense_audio_captioning.mp3"></audio>
+  <div class="sample-prompt">Which sound events occur, and what are their time intervals and descriptions?</div>
+  <pre><code>[audio:caption] <span class="ts">&lt;|0.0|&gt;</span> A river flows loudly outdoors. <span class="ts">&lt;|23.9|&gt;</span>
+[audio:caption] <span class="ts">&lt;|0.9|&gt;</span> A bird tweets quietly and repeatedly outdoors. <span class="ts">&lt;|1.4|&gt;</span>
+[audio:caption] <span class="ts">&lt;|2.3|&gt;</span> A bird tweets quietly and repeatedly outdoors. <span class="ts">&lt;|2.8|&gt;</span>
+[audio:caption] <span class="ts">&lt;|3.7|&gt;</span> A bird tweets quietly and repeatedly outdoors. <span class="ts">&lt;|4.3|&gt;</span>
+[audio:caption] <span class="ts">&lt;|5.2|&gt;</span> A bird tweets quietly and repeatedly outdoors. <span class="ts">&lt;|5.7|&gt;</span>
+[audio:caption] <span class="ts">&lt;|6.5|&gt;</span> A bird tweets quietly and repeatedly outdoors. <span class="ts">&lt;|7.5|&gt;</span>
+[audio:caption] <span class="ts">&lt;|8.9|&gt;</span> A bird tweets quietly and repeatedly outdoors. <span class="ts">&lt;|12.6|&gt;</span>
+[audio:caption] <span class="ts">&lt;|13.4|&gt;</span> A bird tweets quietly and repeatedly outdoors. <span class="ts">&lt;|13.9|&gt;</span>
+[audio:caption] <span class="ts">&lt;|15.2|&gt;</span> A bird tweets quietly and repeatedly outdoors. <span class="ts">&lt;|15.7|&gt;</span>
+[audio:caption] <span class="ts">&lt;|16.6|&gt;</span> A bird tweets quietly and repeatedly outdoors. <span class="ts">&lt;|19.9|&gt;</span>
+[audio:caption] <span class="ts">&lt;|20.6|&gt;</span> A bird tweets quietly and repeatedly outdoors. <span class="ts">&lt;|21.6|&gt;</span>
+[audio:caption] <span class="ts">&lt;|22.5|&gt;</span> A bird tweets quietly and repeatedly outdoors. <span class="ts">&lt;|23.8|&gt;</span></code></pre>
+</div>
+<div class="sample">
+  <div class="sample-head">
+    <span class="tag">[audio:ground]</span>
+    <span class="sample-corpus">TACOS · audio temporal grounding (same clip as captioning)</span>
+  </div>
+  <audio controls preload="none" src="samples/audio_grounding.mp3"></audio>
+  <div class="sample-prompt">What is the time interval (start and end) for the query 'a bird tweets quietly and repeatedly outdoors' in the audio?</div>
+  <pre><code>[audio:ground] <span class="ts">&lt;|0.9|&gt;</span> to <span class="ts">&lt;|1.4|&gt;</span>
+[audio:ground] <span class="ts">&lt;|2.3|&gt;</span> to <span class="ts">&lt;|2.8|&gt;</span>
+[audio:ground] <span class="ts">&lt;|3.7|&gt;</span> to <span class="ts">&lt;|4.3|&gt;</span>
+[audio:ground] <span class="ts">&lt;|5.2|&gt;</span> to <span class="ts">&lt;|5.7|&gt;</span>
+[audio:ground] <span class="ts">&lt;|6.5|&gt;</span> to <span class="ts">&lt;|7.5|&gt;</span>
+[audio:ground] <span class="ts">&lt;|8.9|&gt;</span> to <span class="ts">&lt;|12.6|&gt;</span>
+[audio:ground] <span class="ts">&lt;|13.4|&gt;</span> to <span class="ts">&lt;|13.9|&gt;</span>
+[audio:ground] <span class="ts">&lt;|15.2|&gt;</span> to <span class="ts">&lt;|15.7|&gt;</span>
+[audio:ground] <span class="ts">&lt;|16.6|&gt;</span> to <span class="ts">&lt;|19.9|&gt;</span>
+[audio:ground] <span class="ts">&lt;|20.6|&gt;</span> to <span class="ts">&lt;|21.6|&gt;</span>
+[audio:ground] <span class="ts">&lt;|22.5|&gt;</span> to <span class="ts">&lt;|23.8|&gt;</span></code></pre>
+</div>
+<div class="sample">
+  <div class="sample-head">
+    <span class="tag">[audio:music]</span>
+    <span class="sample-corpus">Slakh2100 · music captioning</span>
+  </div>
+  <audio controls preload="none" src="samples/music_captioning.wav"></audio>
+  <div class="sample-prompt">Caption this music with timestamps. Describe the instrument, tempo, chord progression, dynamics, and note statistics.</div>
+  <pre><code>[instrument] Strings enters at <span class="ts">&lt;|0.00|&gt;</span> exits at <span class="ts">&lt;|2.07|&gt;</span> [tempo] 102.0 BPM at <span class="ts">&lt;|0.00|&gt;</span> [tempo] 98.0 BPM at <span class="ts">&lt;|7.50|&gt;</span> [tempo] 94.0 BPM at <span class="ts">&lt;|9.00|&gt;</span> [tempo] 90.0 BPM at <span class="ts">&lt;|10.00|&gt;</span> [tempo] 84.0 BPM at <span class="ts">&lt;|23.50|&gt;</span> [tempo] 78.0 BPM at <span class="ts">&lt;|25.00|&gt;</span> [tempo] 72.0 BPM at <span class="ts">&lt;|26.50|&gt;</span> [tempo] 66.0 BPM at <span class="ts">&lt;|29.50|&gt;</span> [dynamics] f from <span class="ts">&lt;|0.00|&gt;</span> to <span class="ts">&lt;|0.00|&gt;</span> [dynamics] ff from <span class="ts">&lt;|0.00|&gt;</span> to <span class="ts">&lt;|0.50|&gt;</span> [dynamics] f from <span class="ts">&lt;|0.50|&gt;</span> to <span class="ts">&lt;|0.50|&gt;</span> [dynamics] mp from <span class="ts">&lt;|0.50|&gt;</span> to <span class="ts">&lt;|0.50|&gt;</span> [dynamics] mf from <span class="ts">&lt;|0.50|&gt;</span> to <span class="ts">&lt;|0.50|&gt;</span> [dynamics] f from <span class="ts">&lt;|0.50|&gt;</span> to <span class="ts">&lt;|0.50|&gt;</span> [dynamics] ff from <span class="ts">&lt;|0.50|&gt;</span> to <span class="ts">&lt;|0.50|&gt;</span> [dynamics] f from <span class="ts">&lt;|0.50|&gt;</span> to <span class="ts">&lt;|0.50|&gt;</span> [dynamics] mp from <span class="ts">&lt;|0.50|&gt;</span> to <span class="ts">&lt;|0.50|&gt;</span> [dynamics] p from <span class="ts">&lt;|0.50|&gt;</span> to <span class="ts">&lt;|1.00|&gt;</span> [dynamics] mf from <span class="ts">&lt;|1.00|&gt;</span> to <span class="ts">&lt;|1.00|&gt;</span> [dynamics] f from <span class="ts">&lt;|1.00|&gt;</span> to <span class="ts">&lt;|1.00|&gt;</span> [dynamics] mf from <span class="ts">&lt;|1.00|&gt;</span> to <span class="ts">&lt;|1.00|&gt;</span> [dynamics] p from <span class="ts">&lt;|1.00|&gt;</span> to <span class="ts">&lt;|1.00|&gt;</span> [dynamics] mp from <span class="ts">&lt;|1.00|&gt;</span> to <span class="ts">&lt;|1.00|&gt;</span> [dynamics] mf from <span class="ts">&lt;|1.00|&gt;</span> to <span class="ts">&lt;|1.00|&gt;</span> [dynamics] f from <span class="ts">&lt;|1.00|&gt;</span> to <span class="ts">&lt;|1.50|&gt;</span> [dynamics] mf from <span class="ts">&lt;|1.50|&gt;</span> to <span class="ts">&lt;|1.50|&gt;</span> [dynamics] p from <span class="ts">&lt;|1.50|&gt;</span> to <span class="ts">&lt;|1.50|&gt;</span> [dynamics] mf from <span class="ts">&lt;|1.50|&gt;</span> to <span class="ts">&lt;|1.50|&gt;</span> [dynamics] mp from <span class="ts">&lt;|1.50|&gt;</span> to <span class="ts">&lt;|1.50|&gt;</span> [dynamics] mf from <span class="ts">&lt;|1.50|&gt;</span> to <span class="ts">&lt;|1.50|&gt;</span> [dynamics] f from <span class="ts">&lt;|1.50|&gt;</span> to <span class="ts">&lt;|1.50|&gt;</span> [dynamics] ff from <span class="ts">&lt;|1.50|&gt;</span> to <span class="ts">&lt;|2.00|&gt;</span> [dynamics] f from <span class="ts">&lt;|2.00|&gt;</span> to <span class="ts">&lt;|2.00|&gt;</span> [dynamics] mf from <span class="ts">&lt;|2.00|&gt;</span> to <span class="ts">&lt;|2.00|&gt;</span> [dynamics] ff from <span class="ts">&lt;|2.00|&gt;</span> to <span class="ts">&lt;|2.00|&gt;</span> [dynamics] mf from <span class="ts">&lt;|2.00|&gt;</span> to <span class="ts">&lt;|2.00|&gt;</span> [dynamics] mp from <span class="ts">&lt;|2.00|&gt;</span> to <span class="ts">&lt;|2.00|&gt;</span> [dynamics] p from <span class="ts">&lt;|2.00|&gt;</span> to <span class="ts">&lt;|2.50|&gt;</span> [dynamics] mp from <span class="ts">&lt;|2.50|&gt;</span> to <span class="ts">&lt;|2.50|&gt;</span> [dynamics] p from <span class="ts">&lt;|2.50|&gt;</span> to <span class="ts">&lt;|2.50|&gt;</span> [dynamics] pp from <span class="ts">&lt;|2.50|&gt;</span> to <span class="ts">&lt;|3.00|&gt;</span> [dynamics] ppp from <span class="ts">&lt;|3.00|&gt;</span> to <span class="ts">&lt;|3.00|&gt;</span> [dynamics] pp from <span class="ts">&lt;|3.00|&gt;</span> to <span class="ts">&lt;|3.00|&gt;</span> [dynamics] ppp from <span class="ts">&lt;|3.00|&gt;</span> to <span class="ts">&lt;|30.00|&gt;</span> [chord] C#:dom7 from <span class="ts">&lt;|0.00|&gt;</span> to <span class="ts">&lt;|0.50|&gt;</span> [chord] A:maj7 from <span class="ts">&lt;|0.50|&gt;</span> to <span class="ts">&lt;|1.00|&gt;</span> [chord] A:maj from <span class="ts">&lt;|1.00|&gt;</span> to <span class="ts">&lt;|1.50|&gt;</span> [chord] G#:min from <span class="ts">&lt;|1.50|&gt;</span> to <span class="ts">&lt;|2.00|&gt;</span> [chord] F#:min from <span class="ts">&lt;|2.00|&gt;</span> to <span class="ts">&lt;|2.50|&gt;</span> [chord] F#:sus2 from <span class="ts">&lt;|2.50|&gt;</span> to <span class="ts">&lt;|3.00|&gt;</span> [chord] F#:min from <span class="ts">&lt;|3.00|&gt;</span> to <span class="ts">&lt;|3.50|&gt;</span> [chord] F#:min from <span class="ts">&lt;|3.50|&gt;</span> to <span class="ts">&lt;|4.50|&gt;</span> [chord] G#:min7 from <span class="ts">&lt;|4.50|&gt;</span> to <span class="ts">&lt;|5.00|&gt;</span> [chord] D:maj from <span class="ts">&lt;|5.00|&gt;</span> to <span class="ts">&lt;|5.50|&gt;</span> [chord] G:maj7 from <span class="ts">&lt;|5.50|&gt;</span> to <span class="ts">&lt;|6.00|&gt;</span> [chord] D:maj7 from <span class="ts">&lt;|6.00|&gt;</span> to <span class="ts">&lt;|6.50|&gt;</span> [chord] F:hdim7 from <span class="ts">&lt;|6.50|&gt;</span> to <span class="ts">&lt;|7.00|&gt;</span> [chord] A:sus2 from <span class="ts">&lt;|7.00|&gt;</span> to <span class="ts">&lt;|7.50|&gt;</span> [chord] C#:maj7 from <span class="ts">&lt;|7.50|&gt;</span> to <span class="ts">&lt;|8.00|&gt;</span> [chord] F:hdim7 from <span class="ts">&lt;|8.00|&gt;</span> to <span class="ts">&lt;|8.50|&gt;</span> [chord] B:hdim7 from <span class="ts">&lt;|8.50|&gt;</span> to <span class="ts">&lt;|9.00|&gt;</span> [chord] D#:maj7 from <span class="ts">&lt;|9.00|&gt;</span> to <span class="ts">&lt;|9.50|&gt;</span> [chord] G:hdim7 from <span class="ts">&lt;|9.50|&gt;</span> to <span class="ts">&lt;|10.00|&gt;</span> [chord] C#:maj7 from <span class="ts">&lt;|10.00|&gt;</span> to <span class="ts">&lt;|10.50|&gt;</span> [chord] G#:hdim7 from <span class="ts">&lt;|10.50|&gt;</span> to <span class="ts">&lt;|11.00|&gt;</span> [stats] Note density: 0.4 notes/sec, range: C#4 to C#5</code></pre>
+</div>
+
+<h2 id="takeaways">Takeaways</h2>
+
+<ol>
+  <li>
+    <p><strong>Timestamping is a post-training problem, not an architecture problem.</strong> A frozen Whisper encoder and an off-the-shelf Qwen2-7B decoder are enough; what they need is a time-aware interface and a loss that knows time is ordered.</p>
+  </li>
+  <li>
+    <p><strong>Give time its own tokens.</strong> Predicting a timestamp should be one categorical decision, not a walk through BPE digit fragments. Atomic <code>&lt;|t|&gt;</code> tokens at 0.1 s resolution make that possible.</p>
+  </li>
+  <li>
+    <p><strong>The loss carries the gain; the projector needs a partner.</strong> The distance-aware Gaussian loss alone accounts for most of the ablation improvement. The time-aware projector alone does nothing: wall-clock position only helps once a loss rewards getting close.</p>
+  </li>
+  <li>
+    <p><strong>One decoder handles all five tasks.</strong> Speech, sound and music timestamping share a single output grammar, switched only by a task tag, including structured chord and tempo annotation, which no prior LALM produces.</p>
+  </li>
+  <li>
+    <p><strong>RL refines, SFT installs.</strong> GRPO with verifiable temporal rewards gives consistent but moderate gains on top of the SFT checkpoint. It is a refinement stage, not the source of the capability.</p>
+  </li>
+</ol>
+
+<h2 id="citation">Citation</h2>
+
+<div class="citation-block">
+<span class="cite-label">BibTeX</span>
+<pre>@misc{kulkarni2026tempo,
+  title={TEMPO: Temporally-grounded Multi-task Post-training for Large Audio-Language Models},
+  author={Apoorva Kulkarni and Kaousheik Jayakumar and Sreyan Ghosh and Utathya Aich and Ramani Duraiswami and Dinesh Manocha},
+  year={2026},
+  eprint={2608.29999},
+  archivePrefix={arXiv},
+  primaryClass={eess.AS},
+  url={https://arxiv.org/abs/2608.29999},
+}</pre>
+</div>
+
+        </article>
+
+        <footer class="site-footer">
+            <span class="footer-name">Apoorva Kulkarni</span>
+            <div class="footer-links">
+                <a href="mailto:apoorvak@umd.edu">Email</a>
+                <a href="https://github.com/apoorva-ak" target="_blank">GitHub</a>
+                <a href="https://linkedin.com/in/apoorva-ak01" target="_blank">LinkedIn</a>
+            </div>
+        </footer>
+    </main>
+
+    <!-- TOC -->
+    <aside class="toc-col">
+        <div class="toc-label">On this page</div>
+        <nav>
+            <ul id="nav-menu">
+                <li><a href="#top" class="active">Overview</a></li>
+                <li><a href="#motivation">Motivation</a></li>
+                <li><a href="#tasks">Five Tasks, One Grammar</a></li>
+                <li>
+                    <a href="#method">Method</a>
+                    <ul>
+                        <li><a href="#atomic-tokens">Atomic Timestamp Tokens</a></li>
+                        <li><a href="#time-aware-projector">Time-Aware Projector</a></li>
+                        <li><a href="#gaussian-loss">Distance-Aware Gaussian Loss</a></li>
+                        <li><a href="#curriculum">Three-Stage Curriculum</a></li>
+                    </ul>
+                </li>
+                <li>
+                    <a href="#results">Results</a>
+                    <ul>
+                        <li><a href="#ablation">What Each Component Buys</a></li>
+                        <li><a href="#curriculum-rl">Curriculum and RL</a></li>
+                    </ul>
+                </li>
+                <li><a href="#real-world-music">Real-World Music</a></li>
+                <li><a href="#samples">Samples</a></li>
+                <li><a href="#takeaways">Takeaways</a></li>
+                <li><a href="#citation">Citation</a></li>
+            </ul>
+        </nav>
+    </aside>
+
+</div>
+
+<script>
+    // progress bar
+    window.addEventListener('scroll', () => {
+        const h = document.documentElement;
+        document.getElementById('progress').style.width =
+            (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+    });
+
+    // scroll spy
+    const navLinks = document.querySelectorAll('#nav-menu a');
+    const navHrefs = Array.from(navLinks).map(l => l.getAttribute('href').slice(1));
+    const allIds   = document.querySelectorAll('[id]');
+
+    function updateNav() {
+        let current = 'top';
+        allIds.forEach(el => {
+            if (navHrefs.includes(el.id) && el.getBoundingClientRect().top <= 120) current = el.id;
+        });
+        navLinks.forEach(l => l.classList.toggle('active', l.getAttribute('href') === '#' + current));
+    }
+    window.addEventListener('scroll', updateNav, { passive: true });
+    updateNav();
+
+    // citation copy
+    document.querySelectorAll('.citation-block').forEach(block => {
+        const label = block.querySelector('.cite-label');
+        if (!label) return;
+        const header = document.createElement('div');
+        header.className = 'cite-header';
+        const btn = document.createElement('button');
+        btn.className = 'cite-copy';
+        btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span>Copy</span>';
+        btn.onclick = () => {
+            const pre = block.querySelector('pre');
+            if (!pre) return;
+            navigator.clipboard.writeText(pre.textContent.trim()).then(() => {
+                btn.classList.add('copied');
+                btn.querySelector('span').textContent = 'Copied!';
+                setTimeout(() => { btn.classList.remove('copied'); btn.querySelector('span').textContent = 'Copy'; }, 2000);
+            });
+        };
+        label.parentNode.insertBefore(header, label);
+        header.appendChild(label);
+        header.appendChild(btn);
+    });
+</script>
+
+</body>
+</html>
