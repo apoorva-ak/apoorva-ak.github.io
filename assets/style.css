@@ -154,7 +154,7 @@ button:focus-visible {
    SECTIONS & HEADINGS
    ============================================ */
 section {
-    margin-bottom: 48px;
+    margin-bottom: 40px;
 }
 
 section:last-child {
@@ -162,13 +162,23 @@ section:last-child {
 }
 
 h2 {
-    font-size: 1.25rem;
+    font-size: 1.2rem;
     font-weight: 600;
     letter-spacing: -0.01em;
     color: var(--text);
-    margin-bottom: 22px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+}
+
+/* ============================================
+   PANEL
+   Groups a section's rows onto a white surface so
+   each section reads as one block against the page.
+   ============================================ */
+.panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 22px;
 }
 
 /* ============================================
@@ -198,7 +208,7 @@ h2 {
 .updates-list li {
     display: flex;
     gap: 20px;
-    padding: 11px 0;
+    padding: 13px 0;
     border-bottom: 1px solid var(--border);
 }
 
@@ -237,12 +247,12 @@ h2 {
 }
 
 .publication:first-of-type {
-    padding-top: 0;
+    padding-top: 15px;
 }
 
 .publication:last-child {
     border-bottom: none;
-    padding-bottom: 0;
+    padding-bottom: 15px;
 }
 
 .pub-title {
@@ -375,7 +385,11 @@ h2 {
 
     .main-content {
         margin-left: 0;
-        padding: 40px 30px 56px;
+        padding: 40px 22px 56px;
+    }
+
+    .panel {
+        padding: 6px 16px;
     }
 
     .updates-list li {
@@ -474,6 +488,13 @@ h2 {
 
     h2 {
         border-bottom: 1px solid #000;
+    }
+
+    .panel {
+        background: none;
+        border: none;
+        border-radius: 0;
+        padding: 0;
     }
 
     .pub-venue {
